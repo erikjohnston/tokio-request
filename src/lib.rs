@@ -87,7 +87,7 @@
 //! figured out.
 
 #![deny(missing_docs)]
-#![feature(receiver_try_iter)]
+#![feature(receiver_try_iter, conservative_impl_trait)]
 #![cfg_attr(feature = "response-to-string", feature(try_from))]
 #![cfg_attr(feature = "serde-serialization", feature(plugin, custom_derive))]
 #![cfg_attr(feature = "serde-serialization", plugin(serde_macros))]

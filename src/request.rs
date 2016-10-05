@@ -7,7 +7,7 @@ use std::sync::mpsc::channel;
 use std::time::Duration;
 use super::Method;
 use curl::easy::{Easy, List};
-use futures::{BoxFuture, failed, Future};
+use futures::{Future, IntoFuture};
 use response::Response;
 use tokio_core::reactor::Handle;
 use tokio_curl::Session;
@@ -164,8 +164,8 @@ impl Request {
     ///
     /// ## Panics
     /// Panics in case of native exceptions in cURL.
-    pub fn send(self, h: Handle) -> BoxFuture<Response, Error> {
-        self.send_with_session(&Session::new(h))
+    pub fn send(self, h: Handle) -> impl Future<Item=Response, Error=Error> {
+        self.send_with_session(Session::new(h))
     }
 
     /// Uses the given `Session` to send the HTTP request through and returns a future that
@@ -173,7 +173,7 @@ impl Request {
     ///
     /// ## Panics
     /// Panics in case of native exceptions in cURL.
-    pub fn send_with_session(mut self, session: &Session) -> BoxFuture<Response, Error> {
+    pub fn send_with_session(mut self, session: Session) -> impl Future<Item=Response, Error=Error> {
         {
             let mut query_pairs = self.url.query_pairs_mut();
             for (key, value) in self.params {
@@ -255,20 +255,17 @@ impl Request {
                 }))
         };
 
-        match config_res {
-            Ok(_) => session.perform(easy)
-                            .map_err(|err| err.into_error())
-                            .map(move |ez| {
-                                let body = body_rx.try_iter().fold(Vec::new(), |mut data, slice| {
-                                    data.extend(slice);
-                                    data
-                                });
-                                let headers = header_rx.try_iter().collect::<Vec<_>>();
-                                Response::new(ez, headers, body)
-                            })
-                            .boxed(),
-            Err(error) => failed(error.into()).boxed()
-        }
+        config_res.into_future().map_err(From::from).and_then(move |_| {
+            session.perform(easy)
+            .map_err(|err| err.into_error())
+        }).map(move |ez| {
+            let body = body_rx.try_iter().fold(Vec::new(), |mut data, slice| {
+                data.extend(slice);
+                data
+            });
+            let headers = header_rx.try_iter().collect::<Vec<_>>();
+            Response::new(ez, headers, body)
+        })
     }
 
     /// Set the maximum time the request is allowed to take.
